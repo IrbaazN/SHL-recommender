@@ -39,8 +39,8 @@ dimension = embeddings.shape[1]
 index = faiss.IndexFlatIP(dimension)
 index.add(embeddings)
 
-faiss.write_index(index, "embeddings/catalog.index")
-with open("embeddings/catalog_meta.pkl", "wb") as f:
-    pickle.dump(catalog, f)
+# Create embeddings folder if it doesn't exist
+import os
+os.makedirs("embeddings", exist_ok=True)
 
-print(f"Done! Saved {index.ntotal} vectors.")
+faiss.write_index(index, "embeddings/catalog.index")
