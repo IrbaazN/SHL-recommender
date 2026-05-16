@@ -10,21 +10,20 @@ load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-with open("embeddings/catalog_meta.pkl", "rb") as f:
-    catalog = pickle.load(f)
-valid_urls = {item["link"] for item in catalog}
-
 ALWAYS_INCLUDE = {
     "Occupational Personality Questionnaire OPQ32r",
     "SHL Verify Interactive G+"
 }
+
+def get_valid_urls():
+    from retrieval import get_catalog
+    return {item["link"] for item in get_catalog()}
 
 def build_catalog_context(messages: list) -> str:
     user_msgs = [m["content"] for m in messages if m["role"] == "user"]
     query = " ".join(user_msgs[-3:])
     results = search(query, top_k=15)
 
-    # Always inject key assessments into context
     result_names = {r["name"] for r in results}
     missing = ALWAYS_INCLUDE - result_names
     for name in missing:
@@ -49,7 +48,6 @@ def build_catalog_context(messages: list) -> str:
     return "\n".join(lines)
 
 def run_agent(messages: list) -> dict:
-    # Enforce 8 turn cap
     if len(messages) >= 8:
         last_recs = []
         for msg in reversed(messages):
@@ -93,8 +91,8 @@ def run_agent(messages: list) -> dict:
             "end_of_conversation": False
         }
 
-    # Validate URLs — remove anything not in catalog
     if result.get("recommendations"):
+        valid_urls = get_valid_urls()
         result["recommendations"] = [
             r for r in result["recommendations"]
             if r.get("url") in valid_urls

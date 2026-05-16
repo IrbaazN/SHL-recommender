@@ -1,13 +1,14 @@
-import pickle
-import numpy as np
-import faiss
-from sentence_transformers import SentenceTransformer
+import json
+import os
 
-model = SentenceTransformer("paraphrase-MiniLM-L3-v2")
-index = faiss.read_index("embeddings/catalog.index")
+_catalog = None
 
-with open("embeddings/catalog_meta.pkl", "rb") as f:
-    catalog = pickle.load(f)
+def get_catalog():
+    global _catalog
+    if _catalog is None:
+        with open("embeddings/catalog_meta.json") as f:
+            _catalog = json.load(f)
+    return _catalog
 
 KEY_TO_TYPE = {
     "Ability & Aptitude": "A",
@@ -20,16 +21,31 @@ KEY_TO_TYPE = {
     "Simulations": "S"
 }
 
+def score_item(item, query_words):
+    text = " ".join([
+        item.get("name", ""),
+        item.get("description", ""),
+        " ".join(item.get("keys", [])),
+        " ".join(item.get("job_levels", [])),
+        " ".join(item.get("languages", []))
+    ]).lower()
+    return sum(1 for w in query_words if w in text)
+
 def search(query: str, top_k: int = 10) -> list:
-    query_vec = model.encode([query]).astype("float32")
-    faiss.normalize_L2(query_vec)
-    scores, indices = index.search(query_vec, top_k)
+    catalog = get_catalog()
+    query_words = [w for w in query.lower().split() if len(w) > 2]
+
+    scored = []
+    for item in catalog:
+        score = score_item(item, query_words)
+        if score > 0:
+            scored.append((score, item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:top_k]
 
     results = []
-    for score, idx in zip(scores[0], indices[0]):
-        if idx == -1:
-            continue
-        item = catalog[idx]
+    for score, item in top:
         type_letters = list(set(
             KEY_TO_TYPE.get(k, "K") for k in item.get("keys", [])
         ))
@@ -45,9 +61,5 @@ def search(query: str, top_k: int = 10) -> list:
             "adaptive": item.get("adaptive", ""),
             "score": float(score)
         })
-    return results
 
-if __name__ == "__main__":
-    results = search("Java developer mid-level")
-    for r in results:
-        print(f"{r['name']} ({r['test_type']}) — {r['score']:.3f}")
+    return results
